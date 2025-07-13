@@ -1,0 +1,213 @@
+#!/usr/bin/env python3
+import sys
+import subprocess
+import time
+import os
+import logging
+import signal
+import atexit
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+DEFAULT_TIMEOUT = 20 # seconds
+DEFAULT_INITIAL_CHECK_DELAY = 0 # seconds
+DEFAULT_HEARTBEAT_FILE = "heartbeat.txt"
+DEFAULT_GRACE_PERIOD = 5 # seconds for SIGTERM
+DEFAULT_MAX_RESTARTS = -1 # -1 means infinite restarts
+DEFAULT_BACKOFF_FACTOR = 1 # seconds
+
+HEARTBEAT_FILE = DEFAULT_HEARTBEAT_FILE # Will be updated by CLI args
+
+def cleanup_heartbeat_file():
+    if os.path.exists(HEARTBEAT_FILE):
+        try:
+            os.remove(HEARTBEAT_FILE)
+            logging.info(f"Cleaned up heartbeat file: {HEARTBEAT_FILE}")
+        except OSError as e:
+            logging.error(f"Error removing heartbeat file {HEARTBEAT_FILE} during cleanup: {e}")
+
+atexit.register(cleanup_heartbeat_file)
+
+def is_alive(timeout):
+    if not os.path.exists(HEARTBEAT_FILE):
+        logging.warning(f"Heartbeat file '{HEARTBEAT_FILE}' not found.")
+        return False
+    
+    file_mtime = os.path.getmtime(HEARTBEAT_FILE)
+    time_since_last_heartbeat = time.time() - file_mtime
+    
+    if time_since_last_heartbeat > timeout:
+        logging.warning(f"Heartbeat timeout: Last heartbeat was {time_since_last_heartbeat:.2f} seconds ago (timeout is {timeout}s).")
+        return False
+    return True
+
+def terminate_process(proc, grace_period):
+    logging.info(f"Attempting to terminate process {proc.pid} gracefully (grace period: {grace_period}s)...")
+    proc.terminate()
+    try:
+        proc.wait(timeout=grace_period)
+        logging.info(f"Process {proc.pid} terminated gracefully.")
+    except subprocess.TimeoutExpired:
+        logging.warning(f"Process {proc.pid} did not terminate gracefully within {grace_period} seconds. Killing...")
+        proc.kill()
+        proc.wait()
+        logging.info(f"Process {proc.pid} killed.")
+
+def main():
+    global HEARTBEAT_FILE # Declare as global to modify it
+
+    if len(sys.argv) < 2:
+        print("Usage: supervisor [--timeout <seconds>] [--initial-check-delay <seconds>] [--heartbeat-file <path>] [--grace-period <seconds>] [--max-restarts <count>] [--backoff-factor <factor>] <command> [args...]")
+        sys.exit(1)
+
+    cmd_args = sys.argv[1:]
+    
+    timeout = DEFAULT_TIMEOUT
+    initial_check_delay = DEFAULT_INITIAL_CHECK_DELAY
+    heartbeat_file_arg = DEFAULT_HEARTBEAT_FILE
+    grace_period = DEFAULT_GRACE_PERIOD
+    max_restarts = DEFAULT_MAX_RESTARTS
+    backoff_factor = DEFAULT_BACKOFF_FACTOR
+
+    # Parse arguments
+    i = 0
+    while i < len(cmd_args):
+        arg = cmd_args[i]
+        if arg == "--timeout":
+            if i + 1 < len(cmd_args):
+                try:
+                    timeout = int(cmd_args[i+1])
+                    logging.info(f"Using custom heartbeat timeout: {timeout} seconds.")
+                    cmd_args.pop(i+1)
+                    cmd_args.pop(i)
+                    continue
+                except ValueError:
+                    logging.warning(f"Invalid timeout value '{cmd_args[i+1]}'. Using default timeout: {DEFAULT_TIMEOUT} seconds.")
+            else:
+                logging.warning("Missing value for --timeout. Using default timeout.")
+            cmd_args.pop(i)
+            continue
+        elif arg == "--initial-check-delay":
+            if i + 1 < len(cmd_args):
+                try:
+                    initial_check_delay = int(cmd_args[i+1])
+                    logging.info(f"Using custom initial check delay: {initial_check_delay} seconds.")
+                    cmd_args.pop(i+1)
+                    cmd_args.pop(i)
+                    continue
+                except ValueError:
+                    logging.warning(f"Invalid initial check delay value '{cmd_args[i+1]}'. Using default: {DEFAULT_INITIAL_CHECK_DELAY} seconds.")
+            else:
+                logging.warning("Missing value for --initial-check-delay. Using default initial check delay.")
+            cmd_args.pop(i)
+            continue
+        elif arg == "--heartbeat-file":
+            if i + 1 < len(cmd_args):
+                heartbeat_file_arg = cmd_args[i+1]
+                logging.info(f"Using custom heartbeat file: {heartbeat_file_arg}")
+                i += 2 # Advance past both the flag and its value
+                continue
+            else:
+                logging.warning("Missing value for --heartbeat-file. Using default heartbeat file.")
+            cmd_args.pop(i)
+            continue
+        elif arg == "--grace-period":
+            if i + 1 < len(cmd_args):
+                try:
+                    grace_period = int(cmd_args[i+1])
+                    logging.info(f"Using custom grace period: {grace_period} seconds.")
+                    cmd_args.pop(i+1)
+                    cmd_args.pop(i)
+                    continue
+                except ValueError:
+                    logging.warning(f"Invalid grace period value '{cmd_args[i+1]}'. Using default: {DEFAULT_GRACE_PERIOD} seconds.")
+            else:
+                logging.warning("Missing value for --grace-period. Using default grace period.")
+            cmd_args.pop(i)
+            continue
+        elif arg == "--max-restarts":
+            if i + 1 < len(cmd_args):
+                try:
+                    max_restarts = int(cmd_args[i+1])
+                    logging.info(f"Using max restarts: {max_restarts}.")
+                    cmd_args.pop(i+1)
+                    cmd_args.pop(i)
+                    continue
+                except ValueError:
+                    logging.warning(f"Invalid max restarts value '{cmd_args[i+1]}'. Using default: {DEFAULT_MAX_RESTARTS}.")
+            else:
+                logging.warning("Missing value for --max-restarts. Using default max restarts.")
+            cmd_args.pop(i)
+            continue
+        elif arg == "--backoff-factor":
+            if i + 1 < len(cmd_args):
+                try:
+                    backoff_factor = float(cmd_args[i+1])
+                    logging.info(f"Using backoff factor: {backoff_factor}.")
+                    cmd_args.pop(i+1)
+                    cmd_args.pop(i)
+                    continue
+                except ValueError:
+                    logging.warning(f"Invalid backoff factor value '{cmd_args[i+1]}'. Using default: {DEFAULT_BACKOFF_FACTOR}.")
+            else:
+                logging.warning("Missing value for --backoff-factor. Using default backoff factor.")
+            cmd_args.pop(i)
+            continue
+        i += 1
+
+    HEARTBEAT_FILE = heartbeat_file_arg
+
+    if not cmd_args:
+        print("Error: No command provided after supervisor arguments.")
+        print("Usage: supervisor [--timeout <seconds>] [--initial-check-delay <seconds>] [--heartbeat-file <path>] [--grace-period <seconds>] [--max-restarts <count>] [--backoff-factor <factor>] <command> [args...]")
+        sys.exit(1)
+
+    restart_count = 0
+    while True:
+        if max_restarts != -1 and restart_count >= max_restarts:
+            logging.error(f"Max restarts ({max_restarts}) reached. Exiting supervisor.")
+            sys.exit(1)
+
+        current_backoff_delay = backoff_factor * (2 ** restart_count)
+        if restart_count > 0:
+            logging.info(f"Waiting for backoff delay: {current_backoff_delay:.2f} seconds (restart count: {restart_count}).")
+            time.sleep(current_backoff_delay)
+
+        logging.info(f"Starting supervised process (restart count: {restart_count}): {' '.join(cmd_args)}")
+        proc = subprocess.Popen(cmd_args)
+        logging.info(f"Process started with PID: {proc.pid}")
+
+        if initial_check_delay > 0:
+            logging.info(f"Waiting for initial check delay of {initial_check_delay} seconds...")
+            time.sleep(initial_check_delay)
+
+        try:
+            while True:
+                time.sleep(5)
+                poll_result = proc.poll()
+                if poll_result is not None:
+                    if poll_result == 0:
+                        logging.info(f"Process {proc.pid} exited normally with code {poll_result}. Supervisor will exit.")
+                        sys.exit(0)
+                    else:
+                        logging.warning(f"Process {proc.pid} exited with code {poll_result}. Restarting...")
+                        restart_count += 1
+                    break
+                
+                if not is_alive(timeout):
+                    logging.warning(f"No heartbeat detected for process {proc.pid}. Initiating restart.")
+                    terminate_process(proc, grace_period)
+                    restart_count += 1
+                    break
+        except KeyboardInterrupt:
+            logging.info("Interrupted by user. Stopping supervisor.")
+            terminate_process(proc, grace_period)
+            sys.exit(0)
+        except Exception as e:
+            logging.error(f"An unexpected error occurred: {e}. Restarting process.")
+            terminate_process(proc, grace_period)
+            restart_count += 1
+            time.sleep(1) # Small delay before restarting to prevent rapid loops
+
+if __name__ == "__main__":
+    main()
