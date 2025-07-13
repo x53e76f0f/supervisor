@@ -54,9 +54,82 @@ def terminate_process(proc, grace_period):
         proc.wait()
         logging.info(f"Process {proc.pid} killed.")
 
+def print_help():
+    help_text = """
+Usage:
+  supervisor [OPTIONS] <command> [ARGS...]
+
+Description:
+  supervisor – a lightweight process manager with optional heartbeat monitoring.
+  Automatically restarts child processes on failure or missed heartbeat, with
+  configurable backoff, max‑restarts, and graceful shutdown.
+
+Options:
+  --help
+      Show this help message and exit.
+
+  --timeout <seconds>
+      Heartbeat timeout (seconds). If the heartbeat file is not updated
+      within this interval, the process is considered unresponsive and
+      restarted.  
+      (Default: 20)
+
+  --initial-check-delay <seconds>
+      Delay before the first heartbeat check after launching the process.
+      Useful for commands requiring startup time.  
+      (Default: 0)
+
+  --heartbeat-file <path>
+      Path to the file to be updated by the child process to signal liveness.
+      (Default: heartbeat.txt)
+
+  --grace-period <seconds>
+      Grace period after SIGTERM before sending SIGKILL to stop the process.
+      (Default: 5)
+
+  --max-restarts <count>
+      Maximum number of restarts before supervisor exits with error.
+      Use -1 for unlimited restarts.  
+      (Default: -1)
+
+  --backoff-factor <factor>
+      Exponential backoff multiplier between restarts:
+        delay = backoff_factor * 2^restart_count  
+      (Default: 1.0)
+
+  --enable-heartbeat
+      Enable heartbeat monitoring. Without it, supervisor only restarts
+      on non-zero exit code.
+
+Examples:
+  supervisor python my_script.py
+      Run script without heartbeat.
+
+  supervisor --enable-heartbeat --timeout 30 \
+    python my_heartbeat_script.py
+      Run script with heartbeat monitoring.
+
+  supervisor --max-restarts 5 --grace-period 10 ./my_service
+      Restart up to 5 times with longer shutdown grace.
+
+  supervisor --enable-heartbeat --heartbeat-file /tmp/hb.log \
+    --initial-check-delay 15 node app.js
+      Use custom heartbeat file and initial delay.
+
+  supervisor --backoff-factor 2.0 my_flaky_command
+      Apply exponential backoff between restarts.
+"""
+    print(help_text.strip())
+    sys.exit(0)
+
+
+
 def main():
     global HEARTBEAT_FILE
     global HEARTBEAT_ENABLED
+
+    if "--help" in sys.argv:
+        print_help()
 
     if len(sys.argv) < 2:
         print("Usage: supervisor [--timeout <seconds>] [--initial-check-delay <seconds>] [--heartbeat-file <path>] [--grace-period <seconds>] [--max-restarts <count>] [--backoff-factor <factor>] [--enable-heartbeat] <command> [args...]")
