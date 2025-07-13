@@ -7,7 +7,7 @@ import logging
 import signal
 import atexit
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - [SUPERVISOR] %(message)s')
 
 DEFAULT_TIMEOUT = 20 # seconds
 DEFAULT_INITIAL_CHECK_DELAY = 0 # seconds
@@ -15,6 +15,7 @@ DEFAULT_HEARTBEAT_FILE = "heartbeat.txt"
 DEFAULT_GRACE_PERIOD = 5 # seconds for SIGTERM
 DEFAULT_MAX_RESTARTS = -1 # -1 means infinite restarts
 DEFAULT_BACKOFF_FACTOR = 1 # seconds
+HEARTBEAT_ENABLED = False # Heartbeat is disabled by default
 
 HEARTBEAT_FILE = DEFAULT_HEARTBEAT_FILE # Will be updated by CLI args
 
@@ -54,10 +55,11 @@ def terminate_process(proc, grace_period):
         logging.info(f"Process {proc.pid} killed.")
 
 def main():
-    global HEARTBEAT_FILE # Declare as global to modify it
+    global HEARTBEAT_FILE
+    global HEARTBEAT_ENABLED
 
     if len(sys.argv) < 2:
-        print("Usage: supervisor [--timeout <seconds>] [--initial-check-delay <seconds>] [--heartbeat-file <path>] [--grace-period <seconds>] [--max-restarts <count>] [--backoff-factor <factor>] <command> [args...]")
+        print("Usage: supervisor [--timeout <seconds>] [--initial-check-delay <seconds>] [--heartbeat-file <path>] [--grace-period <seconds>] [--max-restarts <count>] [--backoff-factor <factor>] [--enable-heartbeat] <command> [args...]")
         sys.exit(1)
 
     cmd_args = sys.argv[1:]
@@ -105,7 +107,8 @@ def main():
             if i + 1 < len(cmd_args):
                 heartbeat_file_arg = cmd_args[i+1]
                 logging.info(f"Using custom heartbeat file: {heartbeat_file_arg}")
-                i += 2 # Advance past both the flag and its value
+                cmd_args.pop(i+1)
+                cmd_args.pop(i)
                 continue
             else:
                 logging.warning("Missing value for --heartbeat-file. Using default heartbeat file.")
@@ -153,13 +156,18 @@ def main():
                 logging.warning("Missing value for --backoff-factor. Using default backoff factor.")
             cmd_args.pop(i)
             continue
+        elif arg == "--enable-heartbeat":
+            HEARTBEAT_ENABLED = True
+            logging.info("Heartbeat mechanism enabled.")
+            cmd_args.pop(i)
+            continue
         i += 1
 
     HEARTBEAT_FILE = heartbeat_file_arg
 
     if not cmd_args:
         print("Error: No command provided after supervisor arguments.")
-        print("Usage: supervisor [--timeout <seconds>] [--initial-check-delay <seconds>] [--heartbeat-file <path>] [--grace-period <seconds>] [--max-restarts <count>] [--backoff-factor <factor>] <command> [args...]")
+        print("Usage: supervisor [--timeout <seconds>] [--initial-check-delay <seconds>] [--heartbeat-file <path>] [--grace-period <seconds>] [--max-restarts <count>] [--backoff-factor <factor>] [--enable-heartbeat] <command> [args...]")
         sys.exit(1)
 
     restart_count = 0
@@ -176,6 +184,9 @@ def main():
         logging.info(f"Starting supervised process (restart count: {restart_count}): {' '.join(cmd_args)}")
         proc = subprocess.Popen(cmd_args)
         logging.info(f"Process started with PID: {proc.pid}")
+        
+        heartbeat_status_message = "enabled" if HEARTBEAT_ENABLED else "disabled"
+        logging.info(f"Heartbeat mechanism is currently {heartbeat_status_message}.")
 
         if initial_check_delay > 0:
             logging.info(f"Waiting for initial check delay of {initial_check_delay} seconds...")
@@ -194,11 +205,14 @@ def main():
                         restart_count += 1
                     break
                 
-                if not is_alive(timeout):
+                if HEARTBEAT_ENABLED and not is_alive(timeout):
                     logging.warning(f"No heartbeat detected for process {proc.pid}. Initiating restart.")
                     terminate_process(proc, grace_period)
                     restart_count += 1
                     break
+                elif not HEARTBEAT_ENABLED:
+                    # If heartbeat is disabled, we only monitor process exit
+                    pass # Do nothing, continue monitoring poll_result
         except KeyboardInterrupt:
             logging.info("Interrupted by user. Stopping supervisor.")
             terminate_process(proc, grace_period)
