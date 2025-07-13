@@ -1,4 +1,6 @@
 *.pyc
+client.py
+supervisor_task.md
 
 # Heartbeat files for supervisor test and production scenarios
 heartbeat.txt
@@ -226,3 +228,4 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+client.py
