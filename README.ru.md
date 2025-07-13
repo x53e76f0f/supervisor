@@ -208,6 +208,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-```
-<line_count>168</line_count>
-</write_to_file>
