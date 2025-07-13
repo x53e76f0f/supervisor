@@ -166,5 +166,3 @@ if __name__ == "__main__":
         os.remove(HEARTBEAT_FILE)
     main()
 ```
-<line_count>167</line_count>
-</write_to_file>
