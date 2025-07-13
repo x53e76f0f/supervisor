@@ -1,18 +1,18 @@
 # Supervisor Utility
 
-`supervisor` is a lightweight utility designed to run and monitor arbitrary commands. It acts as a wrapper, intercepting process launches, tracking their completion or unresponsiveness (via a heartbeat file), and automatically restarting them upon failure. It is intended for services, scripts, and daemons without built-in watchdog capabilities.
+`supervisor` is a powerful **process management system** and a **DevOps tool** designed for **application monitoring** and running arbitrary commands. It acts as a wrapper, ensuring **reliable execution** and **uninterrupted operation** of your services. `supervisor` intercepts process launches, tracks their completion or unresponsiveness (via a heartbeat file), and performs **automatic restarts** upon failure. It's an ideal solution for **daemon management**, scripts, and services without built-in watchdog capabilities, providing **application lifecycle management** and **operations automation**.
 
 ## Features
 
-*   **Process Launch**: Launches a specified command with its arguments.
-*   **State Monitoring**: Continuously monitors the supervised process.
-*   **Heartbeat Check (Optional)**: Verifies process activity via a configurable heartbeat file. **Disabled by default.**
-*   **Automatic Restart**: Restarts the process upon:
+*   **Process Launch**: `supervisor` launches a specified command with its arguments, providing **task management** and **process control**.
+*   **State Monitoring**: Continuously monitors the supervised process, ensuring **server reliability** and **performance optimization**.
+*   **Heartbeat Check (Optional)**: Verifies process activity via a configurable heartbeat file, which is critical for **application monitoring**. **Disabled by default.**
+*   **Automatic Restart**: `supervisor` performs **automatic restarts** of the process upon:
     *   Process exit (with non-zero code).
-    *   Heartbeat timeout (if enabled).
-*   **Graceful Termination**: Attempts to gracefully terminate the supervised process using `SIGTERM` before resorting to `SIGKILL`.
-*   **Restart Policies**: Supports configurable maximum restart attempts and exponential backoff to prevent "death spirals".
-*   **Logging**: Provides detailed logging of events, including restart counts and backoff delays, with a clear `[SUPERVISOR]` prefix to distinguish its logs.
+    *   Heartbeat timeout (if enabled), contributing to **uninterrupted operation**.
+*   **Graceful Termination**: Attempts to gracefully terminate the supervised process using `SIGTERM` before resorting to `SIGKILL`, ensuring clean **service management**.
+*   **Restart Policies**: Supports configurable maximum restart attempts and exponential backoff to prevent "death spirals", enhancing **server reliability**.
+*   **Logging**: Provides detailed logging of events, including restart counts and backoff delays, with a clear `[SUPERVISOR]` prefix to distinguish its logs, simplifying **background task management** and **application deployment**.
 
 ## Usage
 
